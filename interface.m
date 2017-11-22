@@ -1,0 +1,627 @@
+function varargout = interface(varargin)
+
+gui_Singleton = 1;
+gui_State = struct('gui_Name',       mfilename, ...
+                   'gui_Singleton',  gui_Singleton, ...
+                   'gui_OpeningFcn', @interface_OpeningFcn, ...
+                   'gui_OutputFcn',  @interface_OutputFcn, ...
+                   'gui_LayoutFcn',  [] , ...
+                   'gui_Callback',   []);
+if nargin && ischar(varargin{1})
+    gui_State.gui_Callback = str2func(varargin{1});
+end
+
+if nargout
+    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+else
+    gui_mainfcn(gui_State, varargin{:});
+end
+% End initialization code - DO NOT EDIT
+
+
+% --- Executes just before interface is made visible.
+function interface_OpeningFcn(hObject, eventdata, handles, varargin)
+% Choose default command line output for interface
+handles.output = hObject;
+
+% Update handles structure
+wall=fullfile('wall.jpg');
+handles.wall=imread(wall);
+gate=fullfile('gate.jpg');
+handles.gate=imread(gate);
+road=fullfile('road.png');
+handles.road=imread(road);
+start=fullfile('start.jpg');
+handles.start=imread(start);
+guidata(hObject, handles);
+finish=fullfile('finish.jpg');
+handles.finish=imread(finish);
+foot=fullfile('foot.jpg');
+handles.foot=imread(foot);
+up=fullfile('up.jpg');
+handles.up=imread(up);
+down=fullfile('down.jpg');
+handles.down=imread(down);
+left=fullfile('left.jpg');
+handles.left=imread(left);
+right=fullfile('right.jpg');
+handles.right=imread(right);
+gotofinish=fullfile('gotofinish.jpg');
+handles.gotofinish=imread(gotofinish);
+yes=fullfile('yes.jpg');
+handles.yes=imread(yes);
+global py px pic maze step width height nowroute way transi transj T push getfinal transexist;
+T=[];           %pic:顯示介面,step:走了幾步路,width height:迷宮長寬,transi trasj:傳送門在哪,T:有沒有傳送門
+[py,px] = find(maze == 9);%人現在的位置
+step=0;
+nowroute=0;     %標示的第幾個路線
+push=false;
+getfinal=false;
+transexist=false;
+guidata(hObject, handles);
+
+%讀檔
+s=fopen('maze.txt');
+height=1;
+count=1;
+tline =fgetl(s);
+width=size(tline,2);
+while 1
+    tline = fgetl(s);
+    if ~ischar(tline), break, end
+    height=height+1;
+end
+maze=eye(height,width);
+fclose(s);
+s=fopen('maze.txt');
+while 1
+    tline = fgetl(s);
+    if ~ischar(tline), break, end
+    maze(count,1:width)=tline;
+    count=count+1;
+end
+maze=maze-48;
+way=maze;       %為了之後不動到maze
+varargout{1} = handles.output;
+pic=eye(height,width);
+guidata(hObject, handles);      %handle.和global可以讓所有function用這個variable，不然只有自己的可以用
+
+
+%介面
+for i=1:height
+    for j=1:width
+        
+        %imshow('傳送門.jpg');
+        pic(i,j)= axes('Units','Pixels','Position',[(j)*25+100,(height-i)*25+10,25,25],'xTick',[],'yTick',[]);
+        %axes(pic(i,j));
+        if maze(i,j)== 0
+            imshow(handles.wall);
+        elseif maze(i,j)==1
+            imshow(handles.road);
+        elseif maze(i,j)==9
+            imshow(handles.right);
+        elseif maze(i,j)==8
+            imshow(handles.finish);
+        elseif maze(i,j)==2
+            imshow(handles.gate);
+        end
+        axis off;
+    end
+end
+%axes(pic(py,px));          %axes拿來畫圖,axis off把座標拿掉
+%imshow(handles.right);
+%axis off;
+set(handles.textstep,'String',step);
+
+%傳送門位置 (transi(1),transj(1)) (transi(2),transj(2)) 分別是兩個傳送門
+countrans=1;
+for i=1:height
+    for j=1:width
+        if maze(i,j)==2
+            transi(countrans)=i;
+            transj(countrans)=j;
+            transexist=true;
+            countrans=countrans+1;
+        end
+    end
+end
+
+%解
+DFS_Maze;
+
+% --- Outputs from this function are returned to the command line.
+function varargout = interface_OutputFcn(hObject, eventdata, handles) 
+% varargout  cell array for returning output args (see VARARGOUT);
+% hObject    handle to figure
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Get default command line output from handles structure
+
+
+% --- Executes on button press in pushbuttonpre.
+function pushbuttonpre_Callback(hObject, eventdata, handles) %button of previous route
+global height width pic nowroute sol nn push;
+push=true;
+solmaze=eye(height,width);
+counttime=1;
+if nowroute==0                  %如果第一次按，nowroute設1，nowroute是現在顯示的路線(第幾個)
+    nowroute=1;
+elseif nowroute==1
+    nowroute=sol-1;             %上一個route
+else
+    nowroute=nowroute-1;
+end
+answer=fopen([num2str(nowroute),'.txt']);   %開檔把路線畫到地圖上
+while 1
+    line = fgetl(answer);
+    if ~ischar(line), break, end
+    solmaze(counttime,1:width)=line;
+    counttime=counttime+1;
+end
+solmaze=solmaze-48;
+set(handles.textlength,'String',nn(nowroute));      %第nowroute個路線的長度
+com=strcat(num2str(nowroute),'/',num2str(sol-1));   %結合nowroute和路線總數量
+set(handles.textroute,'String',com);                %顯示到介面
+for i=1:height                                      %畫出路線
+    for j=1:width
+        if solmaze(i,j)==2
+            axes(pic(i,j));
+            imshow(handles.gate);
+            axis off;
+        end
+        if solmaze(i,j)==5
+            axes(pic(i,j));
+            imshow(handles.yes);
+            axis off;
+        end
+        if solmaze(i,j)==1
+            axes(pic(i,j));
+            imshow(handles.road);
+            axis off;
+        end
+    end
+end
+        
+% --- Executes on button press in pushbuttonnext.
+function pushbuttonnext_Callback(hObject, eventdata, handles) %button of next route
+global height width pic nowroute sol nn push;
+push=true;
+solmaze=eye(height,width);
+counttime=1;
+if nowroute==0 | nowroute==sol-1    %如果第一次按，nowroute設1，nowroute是現在顯示的路線(第幾個)
+    nowroute=1;
+else
+    nowroute=nowroute+1;            %下一個route
+end
+answer=fopen([num2str(nowroute),'.txt']);   %開檔把路線畫到地圖上
+while 1
+    line = fgetl(answer);
+    if ~ischar(line), break, end
+    solmaze(counttime,1:width)=line;
+    counttime=counttime+1;
+end
+solmaze=solmaze-48;
+set(handles.textlength,'String',nn(nowroute));      %第nowroute個路線的長度
+com=strcat(num2str(nowroute),'/',num2str(sol-1));   %結合nowroute和路線總數量
+set(handles.textroute,'String',com);                %顯示到介面
+for i=1:height                                      %畫出路線
+    for j=1:width
+        if solmaze(i,j)==5
+            axes(pic(i,j));
+            imshow(handles.yes);
+            axis off;
+        end
+        if solmaze(i,j)==1
+            axes(pic(i,j));
+            imshow(handles.road);
+            axis off;
+        end
+        if solmaze(i,j)==2
+            axes(pic(i,j));
+            imshow(handles.gate);
+            axis off;
+        end
+    end
+end
+
+
+% --- Executes on button press in pushbuttonsp.
+function pushbuttonsp_Callback(hObject, eventdata, handles) %button of shortest path
+global nn nowroute sol width height pic T push;
+push=true;
+nowroute=1;
+counttime=1;
+for i=1:sol-1
+    if T(i)==0
+        nowroute=i;
+    end
+end
+for i=1:sol-1                %T=0 就是沒有通過trans
+    if nn(i)<nn(nowroute) & T(i)==0
+        nowroute=i;
+    end
+end
+answer=fopen([num2str(nowroute),'.txt']);   %畫圖
+while 1
+    line = fgetl(answer);
+    if ~ischar(line), break, end
+    solmaze(counttime,1:width)=line;
+    counttime=counttime+1;
+end
+solmaze=solmaze-48;
+set(handles.textlength,'String',nn(nowroute));
+com=strcat(num2str(nowroute),'/',num2str(sol-1));
+set(handles.textroute,'String',com);
+for i=1:height
+    for j=1:width
+        if solmaze(i,j)==5
+            axes(pic(i,j));
+            imshow(handles.yes);
+            axis off;
+        end
+        if solmaze(i,j)==1
+            axes(pic(i,j));
+            imshow(handles.road);
+            axis off;
+        end
+        if solmaze(i,j)==2
+            axes(pic(i,j));
+            imshow(handles.gate);
+            axis off;
+        end
+    end
+end
+
+
+% --- Executes on button press in pushbuttonsptt.
+function pushbuttonsptt_Callback(hObject, eventdata, handles) %button of shortest path through trans
+global nn solmaze nowroute sol width height pic T push;
+push=true;
+spttexist=false;
+nowroute=1;                
+counttime=1;
+for i=1:sol-1             
+    if T(i)==1
+        nowroute=i;
+    end
+end
+for i=1:sol-1
+    if T(i)==1
+        nowroute=i;
+        spttexist=true;
+    end
+end
+for i=1:sol-1
+    if nn(i)<nn(nowroute) & T(i)==1
+        nowroute=i;
+    end
+end
+%畫出最短路徑，如果沒有直接輸出原本的圖
+if spttexist
+    answer=fopen([num2str(nowroute),'.txt']);
+else
+    answer=fopen('maze.txt');
+end
+while 1
+    line = fgetl(answer);
+    if ~ischar(line), break, end
+    solmaze(counttime,1:width)=line;
+    counttime=counttime+1;
+end
+solmaze=solmaze-48;
+
+if spttexist
+    set(handles.textlength,'String',nn(nowroute));
+    com=strcat(num2str(nowroute),'/',num2str(sol-1));
+    set(handles.textroute,'String',com);
+else
+    set(handles.textlength,'String',"NoRoute");
+    set(handles.textroute,'String',"0/0");
+end
+for i=1:height
+    for j=1:width
+        if solmaze(i,j)==5
+            axes(pic(i,j));
+            imshow(handles.yes);
+            axis off;
+        end
+        if solmaze(i,j)==1
+            axes(pic(i,j));
+            imshow(handles.road);
+            axis off;
+        end
+        if solmaze(i,j)==2
+            axes(pic(i,j));
+            imshow(handles.gate);
+            axis off;
+        end
+    end
+end
+
+% --- Executes on button press in pushbuttonup.
+function pushbuttonup_Callback(hObject, eventdata, handles)
+global py px pic maze step push getfinal transi transj;
+if push==false & getfinal==false
+    if maze(py,px)== 2 | maze(py-1,px)==1 | maze(py-1,px)==2 | (maze(py,px)== 9 & maze(py-1,px)==1) | maze(py-1,px)==8   %可以動的所有條件
+        if maze(py,px)== 9 & maze(py-1,px)==1       %從起點走出來
+            axes(pic(py,px)); 
+            imshow(handles.start);
+            axis off;
+        elseif maze(py,px)== 2 & maze(py-1,px)==1   %如果在傳送門且走路
+            axes(pic(py,px)); 
+            imshow(handles.gate);
+            axis off;
+        elseif maze(py-1,px)==1 | maze(py-1,px)==2 | maze(py-1,px)==8   %前面是路或傳送門，走過去
+            axes(pic(py,px)); 
+            imshow(handles.road);
+            axis off;
+        end
+        py=py-1;
+        axes(pic(py,px));
+        imshow(handles.up);
+        axis off;
+        step=step+1;                            %多走一步路
+        set(handles.textstep,'String',step);    %顯示在GUI
+    end
+    if maze(py,px)==8                           %走到終點換圖
+        axes(pic(py,px));
+        imshow(handles.gotofinish);
+        axis off;
+        getfinal=true;
+    end
+    if maze(py,px)==2                           %傳送門
+        axes(pic(py,px));
+        imshow(handles.gate);
+        axis off;
+        if py==transi(1) & px==transj(1)
+            py=transi(2);
+            px=transj(2);
+        elseif py==transi(2) & px==transj(2)
+            py=transi(1);
+            px=transj(1);
+        end
+        axes(pic(py,px));
+        imshow(handles.up);
+        axis off;
+    end
+end
+
+% --- Executes on button press in pushbuttondown.
+function pushbuttondown_Callback(hObject, eventdata, handles)
+global py px pic maze step push getfinal transi transj;
+if push==false & getfinal==false
+    if maze(py,px)== 2 | maze(py+1,px)==1 | maze(py+1,px)==2 | (maze(py,px)== 9 & maze(py+1,px)==1) | maze(py+1,px)==8
+        if maze(py,px)== 9 & maze(py+1,px)==1
+            axes(pic(py,px)); 
+            imshow(handles.start);
+            axis off;
+        elseif maze(py,px)== 2 & maze(py+1,px)==1
+            axes(pic(py,px)); 
+            imshow(handles.gate);
+            axis off;
+        elseif maze(py+1,px)==1 | maze(py+1,px)==2 | maze(py+1,px)==8
+            axes(pic(py,px));
+            imshow(handles.road);
+            axis off;
+        end
+    py=py+1;
+    axes(pic(py,px));
+    imshow(handles.down);
+    axis off;
+    step=step+1;
+    set(handles.textstep,'String',step);
+    end
+    if maze(py,px)==8
+        axes(pic(py,px));
+        imshow(handles.gotofinish);
+        axis off;
+        getfinal=true;
+    end
+    if maze(py,px)==2
+        axes(pic(py,px));
+        imshow(handles.gate);
+        axis off;
+        if py==transi(1) & px==transj(1)
+            py=transi(2);
+            px=transj(2);
+        elseif py==transi(2) & px==transj(2)
+            py=transi(1);
+            px=transj(1);
+        end
+        axes(pic(py,px));
+        imshow(handles.down);
+        axis off;
+    end
+end
+
+% --- Executes on button press in pushbuttonleft.
+function pushbuttonleft_Callback(hObject, eventdata, handles)
+global py px pic maze step push getfinal transi transj;
+if push==false & getfinal==false
+if maze(py,px)== 2 | maze(py,px-1)==1 | maze(py,px-1)==2 | maze(py,px)== 9 | maze(py,px-1)==8
+    if maze(py,px)== 9 & maze(py,px-1)==1
+        axes(pic(py,px)); 
+        imshow(handles.start);
+        axis off;
+    elseif maze(py,px)== 2 & maze(py,px-1)==1
+        axes(pic(py,px)); 
+        imshow(handles.gate);
+        axis off;
+    elseif maze(py,px-1)==1 | maze(py,px-1)==2 | maze(py,px-1)==8
+        axes(pic(py,px));
+        imshow(handles.road);
+        axis off;
+    end
+    px=px-1;
+    axes(pic(py,px));
+    imshow(handles.left);
+    axis off;
+    step=step+1;
+    set(handles.textstep,'String',step);
+end
+if maze(py,px)==8
+    axes(pic(py,px));
+    imshow(handles.gotofinish);
+    axis off;
+    getfinal=true;
+end
+if maze(py,px)==2
+    axes(pic(py,px));
+    imshow(handles.gate);
+    axis off;
+    if py==transi(1) & px==transj(1)
+        py=transi(2);
+        px=transj(2);
+    elseif py==transi(2) & px==transj(2)
+        py=transi(1);
+        px=transj(1);
+    end
+    axes(pic(py,px));
+    imshow(handles.left);
+    axis off;
+end
+end
+
+% --- Executes on button press in pushbuttonright.
+function pushbuttonright_Callback(hObject, eventdata, handles)
+global py px pic maze step push getfinal transi transj;
+if push==false & getfinal==false 
+if maze(py,px)== 2 | maze(py,px+1)==1 | maze(py,px+1)==2 | maze(py,px)== 9  | maze(py,px+1)==8
+    if maze(py,px)== 9 & maze(py,px+1)==1
+        axes(pic(py,px)); 
+        imshow(handles.start);
+        axis off;
+    elseif maze(py,px)== 2 & maze(py,px+1)==1 %出傳送門
+        axes(pic(py,px)); 
+        imshow(handles.gate);
+        axis off;
+    elseif maze(py,px+1)==1 | maze(py,px+1)==2  | maze(py,px+1)==8 %走
+        axes(pic(py,px));
+        imshow(handles.road);
+        axis off;
+    end
+    px=px+1;
+    axes(pic(py,px));
+    imshow(handles.right);
+    axis off;
+    step=step+1;
+    set(handles.textstep,'String',step);
+end
+if maze(py,px)==8
+    axes(pic(py,px));
+    imshow(handles.gotofinish);
+    axis off;
+    getfinal=true;
+end
+if maze(py,px)==2
+    axes(pic(py,px));
+    imshow(handles.gate);
+    axis off;
+    if py==transi(1) & px==transj(1)
+        py=transi(2);
+        px=transj(2);
+    elseif py==transi(2) & px==transj(2)
+        py=transi(1);
+        px=transj(1);
+    end
+    axes(pic(py,px));
+    imshow(handles.right);
+    axis off;
+end
+end
+
+function DFS_Maze 
+global way directions sol countstep number nn;
+number = 1;
+countstep = 0;
+nn = [];
+directions = kron(eye(2),[-1,1]);
+sol = 1;  
+[I,J] = find(way == 9);% 找到起點  
+search(I,J);  
+
+function search(x,y)
+    global way directions sol height width countstep number nn transi transj T transexist;
+    if way(x,y) == 8 % 找到出口
+        fid = fopen([ num2str(sol) '.txt'], 'wt');
+        for i=1:height       %跑列
+            for j=1:width       %跑行
+                if i==transi(1) & j==transj(1) & way(i,j)==1 & transexist    %把原本圖=1變2
+                    way(i,j)=2;
+                end
+                if i==transi(2) & j==transj(2) & way(i,j)==1 & transexist
+                    way(i,j)=2;
+                end
+                fprintf(fid,'%d',way(i,j));
+            end
+             fprintf(fid,'\n');
+        end
+        if transexist 
+            if way(transi(1),transj(1)) == 2    %如果傳送門還在，表示沒走過，有走過會顯示5
+                T(sol)=0;
+            else
+                T(sol)=1;
+            end
+        else
+            T(sol)=0;
+        end
+        fclose(fid);
+        for i=1:height       %跑列
+            for j=1:width       %跑行
+                if(way(i,j) == 5)
+                    countstep = countstep+1;
+                end
+            end
+        end
+        if T(sol)==1
+            countstep=countstep-1;
+        end
+        nn(number) = countstep
+        countstep = 0;
+        number = number +1;
+        fprintf('solution:\n')
+        disp(way);      % 打印路
+        sol = sol + 1;  % 解的答案增加  
+        return          % 返回  
+    end  
+    % 搜索4個方向  
+    for i = 1 : 4  
+        if cango(x + directions(1,i),y + directions(2,i)) % 如果可以走  
+            if way(x + directions(1,i),y + directions(2,i)) ~= 8  
+                way(x + directions(1,i),y + directions(2,i)) = 5;% 標示下條路
+            end  
+            search(x + directions(1,i),y + directions(2,i)); % 找下條路
+            if x + directions(1,i)==transi(1) & y + directions(2,i)==transj(1) & way(x + directions(1,i),y + directions(2,i)) ~= 8 & transexist
+                %fprintf('兩個都變5\n')
+                way(transi(2),transj(2)) = 5;       %如果下一個找到的是傳，兩個都標有走過(5)
+                way(transi(1),transj(1)) = 5;
+                search(transi(2),transj(2));        %繼續找
+            end
+            if x + directions(1,i)==transi(2) & y + directions(2,i)==transj(2) & way(x + directions(1,i),y + directions(2,i)) ~= 8 & transexist
+                %fprintf('兩個都變5\n')
+                way(transi(1),transj(1)) = 5;
+                way(transi(2),transj(2)) = 5;
+                search(transi(1),transj(1));
+            end
+            
+            if way(x + directions(1,i),y + directions(2,i)) ~= 8  
+                way(x + directions(1,i),y + directions(2,i)) = 1;
+                if x + directions(1,i)==transi(1) & y + directions(2,i)==transj(1) & way(x + directions(1,i),y + directions(2,i)) ~= 8 & transexist
+                    way(transi(1),transj(1)) = 2;                 %因為沒找到，回到原本的狀態
+                    way(transi(2),transj(2)) = 2;
+                end
+                if x + directions(1,i)==transi(2) & y + directions(2,i)==transj(2) & way(x + directions(1,i),y + directions(2,i)) ~= 8
+                    way(transi(1),transj(1)) = 2;
+                    way(transi(2),transj(2)) = 2;
+                end
+            end  
+        end  
+    end  
+    
+function z = cango(x,y)  
+    global way width height;
+    z = true;
+    if x==0 | y==0  | x==height+1 | y==width+1 | way(x,y)==0 | way(x,y)==9 | way(x,y)==5 
+        z = false; % 邊界  
+    end  
